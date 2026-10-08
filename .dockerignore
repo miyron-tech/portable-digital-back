@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+npm-debug.log
+# Любые env-файлы, не только .env: секреты в образ не попадают.
+.env.*
+!.env.example
+.git
+*.tsbuildinfo
