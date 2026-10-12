@@ -54,13 +54,28 @@ export enum ReviewReason {
   CONFLICTING_STATE = 'conflicting_state',
 }
 
-/** Номер платежа у провайдера для данной попытки: первая — голый номер заказа. */
-export const providerReference = (orderNumber: string, attempt: number): string =>
-  attempt > 1 ? `${orderNumber}-${attempt}` : orderNumber;
+/**
+ * Префикс сайта в номере платежа у провайдера. Мерчант WemoPay может быть общим
+ * с другими нашими сайтами (buydone и т. п.), а номера заказов у них такие же
+ * шестизначные: без префикса `482913` одного сайта совпал бы с `482913`
+ * другого, и платёж нельзя было бы однозначно отнести к сайту.
+ */
+export const PROVIDER_REFERENCE_PREFIX = 'PD-';
 
-/** Номер заказа из номера попытки у провайдера: `482913-3` → `482913`. */
-export const orderNumberFromReference = (reference: string): string =>
-  String(reference).replace(/-\d+$/, '');
+/** Номер платежа у провайдера для попытки: `PD-482913`, затем `PD-482913-2`. */
+export const providerReference = (orderNumber: string, attempt: number): string =>
+  `${PROVIDER_REFERENCE_PREFIX}${orderNumber}${attempt > 1 ? `-${attempt}` : ''}`;
+
+const REFERENCE_PATTERN = new RegExp(`^${PROVIDER_REFERENCE_PREFIX}(\\d{6})(?:-\\d+)?$`);
+
+/**
+ * Номер заказа из номера платежа: `PD-482913-3` → `482913`. Номер без нашего
+ * префикса — чужой, `null`: такой платёж к этому сайту не относится.
+ */
+export const orderNumberFromReference = (reference: string): string | null => {
+  const match = REFERENCE_PATTERN.exec(String(reference));
+  return match ? match[1] : null;
+};
 
 /** Запись о каждом ответе провайдера: и вебхук, и опрос. */
 @Schema({ _id: false })

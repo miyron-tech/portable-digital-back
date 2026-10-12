@@ -200,6 +200,16 @@ export class PaymentsService {
     const order = (await this.orders.findByNumber(orderNumber, userId, false)) as any;
     const orderDoc = await this.orders.findById(order.id);
 
+    // Платить можно только за заказ с зафиксированным согласием на условия.
+    // У заказов, оформленных до этого правила, его нет — их оформляют заново.
+    if (!orderDoc.termsAcceptance) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'TERMS_ACCEPTANCE_REQUIRED',
+        message: 'This order was placed before our terms were accepted at checkout. Please place a new order.',
+      });
+    }
+
     // Провайдер отклоняет платёж без фамилии и без любого из четырёх полей
     // адреса. Проверяем до того, как что-то заводить у него или у нас, и
     // отвечаем кодом со списком недостающего: витрина спросит только его,
@@ -383,10 +393,12 @@ export class PaymentsService {
       .exec();
 
     // Вебхук умеет обогнать наше собственное сохранение providerPaymentId —
-    // тогда ищем по номеру заказа из номера попытки (`482913-2` → `482913`).
-    if (!payment && referenceId) {
+    // тогда ищем по номеру заказа из номера попытки (`PD-482913-2` → `482913`).
+    // Номер без нашего префикса не ищем вовсе: это платёж другого сайта.
+    const ownOrderNumber = referenceId ? orderNumberFromReference(referenceId) : null;
+    if (!payment && ownOrderNumber) {
       payment = await this.paymentModel
-        .findOne({ referenceId: orderNumberFromReference(referenceId) })
+        .findOne({ referenceId: ownOrderNumber })
         .exec();
       const expected = payment ? providerReference(payment.referenceId, payment.attempt ?? 1) : null;
       if (payment && (referenceId !== expected || (payment.providerPaymentId && payment.providerPaymentId !== id))) {
