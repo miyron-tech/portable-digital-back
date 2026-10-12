@@ -54,6 +54,15 @@ services:
       WEMOPAY_SIGNING_KEY: ${WEMOPAY_SIGNING_KEY:-}
       WEMOPAY_WEBHOOK_URL: ${PUBLIC_ORIGIN}/api/payments/webhook
       WEMOPAY_RETURN_URL: ${PUBLIC_ORIGIN}/orders/{referenceId}
+      # Почта: без SMTP_HOST/USER/PASS письма копятся в mail_outbox и не уходят.
+      PUBLIC_SITE_URL: ${PUBLIC_ORIGIN}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-Portable digital <no-reply@portable.digital>}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
     volumes:
       - uploads:/app/uploads
     healthcheck:

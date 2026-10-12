@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { MailModule } from '../mail/mail.module';
 import { OrdersModule } from '../orders/orders.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { PaymentsController } from './payments.controller';
@@ -15,6 +16,7 @@ import { WemopayService } from './wemopay.service';
       { name: User.name, schema: UserSchema },
     ]),
     OrdersModule,
+    MailModule,
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService, WemopayService],
