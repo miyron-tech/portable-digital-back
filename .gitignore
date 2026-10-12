@@ -5,3 +5,6 @@ dist
 
 # TypeScript build cache
 *.tsbuildinfo
+
+# Вложения заявок при локальном запуске (UPLOAD_DIR по умолчанию)
+uploads/
