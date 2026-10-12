@@ -6,7 +6,7 @@ import { Model } from 'mongoose';
 import { AppModule } from '../app.module';
 import { Service, ServiceDocument } from '../services/schemas/service.schema';
 import { User, UserDocument, UserRole } from '../users/schemas/user.schema';
-import { SERVICES_SEED } from './services.data';
+import { LEGACY_SERVICE_SLUGS, SERVICES_SEED } from './services.data';
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
@@ -35,6 +35,17 @@ async function seed() {
     await serviceModel.updateOne({ slug: item.slug }, { $set: item }, { upsert: true }).exec();
   }
   logger.log(`Services synchronised: ${SERVICES_SEED.length}`);
+
+  // Прежний каталог совпадал с buydone. Его услуги не удаляем (на них могут
+  // ссылаться старые сметы), а снимаем с публикации; витрина отвечает на их
+  // адреса редиректом на новые.
+  const legacy = await serviceModel
+    .updateMany(
+      { slug: { $in: Object.keys(LEGACY_SERVICE_SLUGS) }, published: true },
+      { $set: { published: false, featured: false } },
+    )
+    .exec();
+  logger.log(`Legacy services unpublished: ${legacy.modifiedCount}`);
 
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
     logger.warn('SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD not set — admin account skipped');

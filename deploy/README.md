@@ -46,3 +46,27 @@ GitHub, in both repositories → Settings → Environments → `production`:
 | `DEPLOY_HOST` | `5.101.179.107` |
 | `DEPLOY_SSH_KEY` | private key `github-actions-deploy@portable.digital` (authorised for root on the server) |
 | `DEPLOY_KNOWN_HOSTS` | output of `ssh-keyscan 5.101.179.107`, checked against the known fingerprints |
+
+## Catalogue updates
+
+The catalogue lives in `src/seed/services.data.ts`. Deploying the backend does not change the
+database; after a catalogue change, run the seed once on the server:
+
+```sh
+docker exec portable-backend node dist/seed/seed.js
+```
+
+It upserts every service by slug and unpublishes the legacy slugs listed in
+`LEGACY_SERVICE_SLUGS` (the frontend redirects those addresses with 301). Services edited in the
+admin panel are overwritten by the seed for matching slugs — check the live catalogue first.
+
+Before changing catalogue texts, check them against buydone.tech, which shares the merchant
+account: export its live catalogue as JSON lines (slug, title, summary, description, features,
+seo, pricing labels and milestone titles) and run
+
+```sh
+npm run build && node -e "const {SERVICES_SEED:s,LEGACY_SERVICE_SLUGS:l}=require('./dist/seed/services.data.js');require('fs').writeFileSync('/tmp/portable.json',JSON.stringify({services:s,legacy:l}))"
+python3 scripts/catalogue-overlap.py /tmp/portable.json buydone-live.jsonl <buydone repo>/src/seed/services.data.ts
+```
+
+The expected result is `overlaps with buydone: 0`.
