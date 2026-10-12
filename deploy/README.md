@@ -70,3 +70,15 @@ python3 scripts/catalogue-overlap.py /tmp/portable.json buydone-live.jsonl <buyd
 ```
 
 The expected result is `overlaps with buydone: 0`.
+
+## Email
+
+After a successful payment the customer receives an "order paid" email: the order contents, the
+amount, the accepted terms edition and how to cancel. Emails are written to the `mail_outbox`
+collection first and sent by a worker inside the API, with retries; a repeated webhook never
+sends a second email (`order-paid:<order id>` dedupe key).
+
+Without `SMTP_HOST`, `SMTP_USER` and `SMTP_PASS` in `/opt/portable/.env` the emails stay queued
+and go out once SMTP is configured and the backend restarted. Before that, the sending domain
+needs SPF, DKIM and DMARC records for the chosen mailbox provider, otherwise mail lands in spam.
+Optional: `SMTP_PORT` (465 by default), `MAIL_FROM`, `MAIL_REPLY_TO`.
