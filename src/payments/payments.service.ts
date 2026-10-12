@@ -25,6 +25,8 @@ import {
   ReviewReason,
 } from './schemas/payment.schema';
 import { WemopayError, WemopayPayment, WemopayService } from './wemopay.service';
+import { MailService } from '../mail/mail.service';
+import { orderPaidMail } from '../mail/templates/order-paid';
 
 const PAGE_SIZE = 20;
 
@@ -57,6 +59,7 @@ export class PaymentsService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly wemopay: WemopayService,
     private readonly orders: OrdersService,
+    private readonly mail: MailService,
   ) {}
 
   // ─── разбор ответа провайдера ──────────────────────────────────────────────
@@ -184,7 +187,40 @@ export class PaymentsService {
    */
   private async syncOrder(payment: PaymentDocument, outcome: ApplyOutcome) {
     if (outcome === 'updated' && payment.status === PaymentStatus.PAID) {
-      await this.orders.markPaid(payment.orderId);
+      const changed = await this.orders.markPaid(payment.orderId);
+      if (changed) await this.queuePaidMail(payment);
+    }
+  }
+
+  /**
+   * Письмо об оплате: состав заказа, сумма, принятая редакция условий и
+   * порядок отказа. Ключ `order-paid:<id>` не даёт отправить его дважды, а
+   * сбой письма не должен ломать обработку платежа — только лог.
+   */
+  private async queuePaidMail(payment: PaymentDocument) {
+    try {
+      const order = await this.orders.findById(payment.orderId.toString());
+      if (!order.termsAcceptance) return;
+      await this.mail.enqueueSafe({
+        to: order.customer.email,
+        template: 'order-paid',
+        dedupeKey: `order-paid:${order._id.toString()}`,
+        ...orderPaidMail({
+          siteUrl: this.mail.siteUrl(),
+          orderNumber: order.orderNumber,
+          customerName: order.customer.name,
+          paidAt: payment.paidAt ?? new Date(),
+          currency: order.currency,
+          items: order.items,
+          subtotal: order.subtotal,
+          discountAmount: order.discountAmount,
+          total: order.total,
+          termsVersion: order.termsAcceptance.version,
+          termsAcceptedAt: order.termsAcceptance.acceptedAt,
+        }),
+      });
+    } catch (error) {
+      this.logger.error(`Could not prepare the payment email for ${payment.referenceId}: ${(error as Error).message}`);
     }
   }
 
