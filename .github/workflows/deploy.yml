@@ -1,0 +1,105 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Два пуша подряд не должны деплоиться параллельно, а начатый деплой нельзя
+# обрывать на середине — поэтому очередь, а не отмена.
+concurrency:
+  group: deploy-production-backend
+  cancel-in-progress: false
+
+env:
+  DEPLOY_USER: root
+  DEPLOY_PATH: /opt/portable
+  PUBLIC_URL: https://portable.digital
+
+jobs:
+  build:
+    name: Typecheck and build (gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          # Та же мажорная версия, что в Dockerfile: проверяем то, что поедет.
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p tsconfig.json
+      - run: npm run build
+      - run: bash -n deploy/deploy.sh
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check deploy secrets
+        # Без секретов шаги ниже падают невнятно, а «Configure SSH» молча пишет
+        # пустой ключ и «проходит». Проверяем явно и называем, чего не хватает.
+        run: |
+          missing=""
+          [ -n "$DEPLOY_SSH_KEY" ] || missing="$missing DEPLOY_SSH_KEY"
+          [ -n "$DEPLOY_KNOWN_HOSTS" ] || missing="$missing DEPLOY_KNOWN_HOSTS"
+          [ -n "$DEPLOY_HOST" ] || missing="$missing DEPLOY_HOST"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing secrets:$missing (Settings → Environments → production)"
+            exit 1
+          fi
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/stdin ~/.ssh/deploy_key <<< "$DEPLOY_SSH_KEY"
+          # Ключ хоста закреплён заранее: сервер не принимается на веру при
+          # первом подключении.
+          install -m 644 /dev/stdin ~/.ssh/known_hosts <<< "$DEPLOY_KNOWN_HOSTS"
+          # Опции в конфиге, а не в переменной: там `~` раскрывается.
+          printf 'Host *\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  BatchMode yes\n' > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+
+      - name: Sync sources and deploy files
+        # Env-файлы, зависимости и сборки не трогаем: боевые секреты живут
+        # только на сервере, а исключённое rsync не удаляет даже с --delete.
+        # compose и deploy.sh лежат в deploy/ этого репозитория и едут рядом.
+        run: |
+          rsync -az --delete \
+            --exclude '.git' --exclude '.github' --exclude 'node_modules' --exclude 'deploy' \
+            --exclude 'dist' --exclude '.env' --exclude '.env.*' --exclude '*.tsbuildinfo' --exclude 'uploads' \
+            -e ssh ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/back/"
+          rsync -az --chmod=F755 -e ssh deploy/deploy.sh "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/deploy.sh"
+          rsync -az --chmod=F644 -e ssh deploy/docker-compose.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/docker-compose.yml"
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+      - name: Build and roll out
+        # Сборка, запуск, проверка здоровья и откат при провале — на сервере.
+        run: ssh "$DEPLOY_USER@$DEPLOY_HOST" "$DEPLOY_PATH/deploy.sh backend ${GITHUB_SHA::7}"
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+      - name: Smoke test through the public domain
+        # Сервер свою проверку прошёл; эта ловит то, что между ним и
+        # посетителем: Cloudflare, Caddy, BFF на Next.
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$PUBLIC_URL/api/store/services/featured" || true)
+            echo "attempt $i: catalogue API -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 5
+          done
+          echo "::error::The catalogue API is not reachable through $PUBLIC_URL"
+          exit 1
