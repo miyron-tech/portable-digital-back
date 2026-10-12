@@ -1,0 +1,93 @@
+# Продакшен portable.digital на сервере: /opt/portable.
+# Источник правды — deploy/ в репозитории portable-digital-back: деплой бэкенда
+# кладёт этот файл и deploy.sh на сервер. Секреты — только в /opt/portable/.env.
+# Трафик приходит через Caddy из /opt/buydone (контейнер buydone-caddy) по общей
+# сети buydone_buydone. В эту сеть подключён только фронтенд и под уникальным
+# именем сервиса: короткие имена frontend/backend там уже заняты двумя проектами.
+# Бэкенд и Mongo живут в своей внутренней сети и наружу не видны.
+name: portable
+
+services:
+  portable-mongo:
+    image: mongo:8
+    container_name: portable-mongo
+    networks: [internal]
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  portable-backend:
+    build:
+      context: ./back
+      target: runtime
+    image: portable-backend
+    container_name: portable-backend
+    networks: [internal]
+    restart: unless-stopped
+    depends_on:
+      portable-mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGODB_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@portable-mongo:27017/portable_store?authSource=admin
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-2h}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      FRONTEND_ORIGIN: ${PUBLIC_ORIGIN}
+      UPLOAD_DIR: /app/uploads
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      # Оплата. Пустые значения допустимы: кнопка оплаты тогда отвечает 503.
+      WEMOPAY_BASE_URL: ${WEMOPAY_BASE_URL:-https://engine-external.wemopay.net}
+      WEMOPAY_API_KEY: ${WEMOPAY_API_KEY:-}
+      WEMOPAY_SIGNING_KEY: ${WEMOPAY_SIGNING_KEY:-}
+      WEMOPAY_WEBHOOK_URL: ${PUBLIC_ORIGIN}/api/payments/webhook
+      WEMOPAY_RETURN_URL: ${PUBLIC_ORIGIN}/orders/{referenceId}
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  portable-frontend:
+    build:
+      context: ./front
+      target: runtime
+      # Сборке живой API не нужен: каталог рендерится по запросу.
+      args:
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_ORIGIN}
+    image: portable-frontend
+    container_name: portable-frontend
+    networks: [internal, proxy]
+    restart: unless-stopped
+    depends_on:
+      portable-backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_URL: http://portable-backend:4000/api
+      NEXT_PUBLIC_SITE_URL: ${PUBLIC_ORIGIN}
+
+networks:
+  internal:
+  proxy:
+    name: buydone_buydone
+    external: true
+
+volumes:
+  mongo-data:
+  uploads:
