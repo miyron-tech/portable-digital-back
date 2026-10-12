@@ -7,12 +7,10 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
 import { UserRole } from '../users/schemas/user.schema';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { QueryServicesDto } from './dto/query-services.dto';
@@ -54,7 +52,6 @@ export class ServicesController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Get('admin/all')
   findAllAdmin(@Query() query: QueryServicesDto) {
     return this.services.findAll(query, true);
@@ -69,7 +66,6 @@ export class ServicesController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Post()
   @ApiOperation({ summary: 'Create a service (admin)' })
   create(@Body() dto: CreateServiceDto) {
@@ -78,7 +74,6 @@ export class ServicesController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Patch(':id')
   @ApiOperation({ summary: 'Update a service (admin)' })
   update(@Param('id') id: string, @Body() dto: UpdateServiceDto) {
@@ -87,7 +82,6 @@ export class ServicesController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a service (admin)' })
   remove(@Param('id') id: string) {

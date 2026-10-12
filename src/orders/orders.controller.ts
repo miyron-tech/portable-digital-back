@@ -1,9 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RateLimit } from '../common/decorators/rate-limit.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
 import { UserRole } from '../users/schemas/user.schema';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
@@ -31,7 +30,6 @@ export class OrdersController {
 
   // Объявлен до `:orderNumber`, иначе «all» попал бы в него как номер заказа.
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Get('all')
   @ApiOperation({ summary: 'All orders (admin)' })
   findAll(@Query() query: QueryOrdersDto) {
@@ -49,7 +47,6 @@ export class OrdersController {
   }
 
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Patch(':id/status')
   @ApiOperation({ summary: 'Move an order through its lifecycle (admin)' })
   updateStatus(@Param('id') id: string, @Body() dto: UpdateOrderStatusDto) {

@@ -8,7 +8,6 @@ import {
   Post,
   Query,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { RawBodyRequest } from '@nestjs/common';
@@ -17,7 +16,6 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { RateLimit } from '../common/decorators/rate-limit.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
 import { UserRole } from '../users/schemas/user.schema';
 import { InitiatePaymentDto } from './dto/initiate-payment.dto';
 import { QueryPaymentsDto } from './dto/query-payments.dto';
@@ -75,7 +73,6 @@ export class PaymentsController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Get()
   @ApiOperation({ summary: 'All payments with status counts (admin)' })
   findAll(@Query() query: QueryPaymentsDto) {
@@ -84,7 +81,6 @@ export class PaymentsController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Post(':id/refund')
   @ApiOperation({ summary: 'Mark a paid payment as refunded (admin, manual)' })
   refund(@Param('id') id: string, @Body() dto: RefundPaymentDto) {
@@ -93,7 +89,6 @@ export class PaymentsController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Post(':id/resolve')
   @ApiOperation({ summary: 'Clear the "needs review" flag (admin)' })
   resolve(@Param('id') id: string) {

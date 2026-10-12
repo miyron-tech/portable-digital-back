@@ -15,7 +15,6 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { RateLimit } from '../common/decorators/rate-limit.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
 import { UserRole } from '../users/schemas/user.schema';
 import { EstimateOwner, EstimateService } from './estimate.service';
 import { AddEstimateItemDto } from './dto/add-estimate-item.dto';
@@ -130,7 +129,6 @@ export class EstimateController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Get(':estimateId')
   @ApiOperation({ summary: 'Read any estimate (admin)' })
   findOne(@Param('estimateId') estimateId: string) {
@@ -139,7 +137,6 @@ export class EstimateController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Patch(':estimateId/discount')
   @ApiOperation({ summary: 'Set a manual discount (admin)' })
   setDiscount(@Param('estimateId') estimateId: string, @Body() dto: ApplyDiscountDto) {
@@ -148,7 +145,6 @@ export class EstimateController {
 
   @ApiBearerAuth()
   @Roles(UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Delete(':estimateId/discount')
   @ApiOperation({ summary: 'Clear the manual discount (admin)' })
   clearDiscount(@Param('estimateId') estimateId: string) {

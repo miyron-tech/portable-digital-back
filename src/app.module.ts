@@ -7,6 +7,7 @@ import { EstimateModule } from './estimate/estimate.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { MongoExceptionFilter } from './common/filters/mongo-exception.filter';
 import { RateLimitGuard } from './common/guards/rate-limit.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 import { HealthController } from './health.controller';
 import { LeadsModule } from './leads/leads.module';
 import { OrdersModule } from './orders/orders.module';
@@ -43,6 +44,8 @@ import { UsersModule } from './users/users.module';
     { provide: APP_GUARD, useClass: RateLimitGuard },
     // Everything is protected by default; endpoints opt out with @Public().
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // После JwtAuthGuard: роли проверяются у уже опознанного пользователя.
+    { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_FILTER, useClass: MongoExceptionFilter },
   ],
 })
