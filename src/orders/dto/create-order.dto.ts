@@ -1,6 +1,7 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  Equals,
   IsOptional,
   IsString,
   Length,
@@ -23,6 +24,17 @@ class BillingDto {
  * Здесь только то, чего нет в профиле: контакты для счёта и платёжный адрес.
  */
 export class CreateOrderDto {
+  /** Явное согласие с Terms of Service и Refund & Cancellation. Без него заказа нет. */
+  @ApiProperty({ example: true })
+  @Equals(true, { message: 'You must accept the Terms of Service and the Refund & Cancellation policy' })
+  acceptTerms!: boolean;
+
+  /** Редакция условий, которую видел клиент; сверяется с действующей. */
+  @ApiProperty({ example: '12 October 2026' })
+  @IsString()
+  @MaxLength(40)
+  termsVersion!: string;
+
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) phone?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) company?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) note?: string;

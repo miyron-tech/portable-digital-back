@@ -22,6 +22,7 @@ import { User, UserDocument, UserRole } from '../users/schemas/user.schema';
 import { MessageAuthorRole, OrderMessage, OrderMessageDocument } from './schemas/order-message.schema';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
+import { CURRENT_TERMS_VERSION } from './terms';
 import {
   Order,
   OrderDocument,
@@ -118,6 +119,17 @@ export class OrdersService {
    * посчитанными суммами. Дальше заказ живёт независимо от каталога.
    */
   async createFromEstimate(userId: string, dto: CreateOrderDto) {
+    // Согласие дано на конкретный текст. Если условия обновились, пока
+    // человек оформлял заказ, — просим перечитать, а не принимаем вслепую.
+    if (dto.termsVersion !== CURRENT_TERMS_VERSION) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'TERMS_UPDATED',
+        currentVersion: CURRENT_TERMS_VERSION,
+        message: `Our terms were updated (edition ${CURRENT_TERMS_VERSION}). Please review them and accept again.`,
+      });
+    }
+
     const user = await this.userModel.findById(userId).exec();
     if (!user) throw new NotFoundException('User not found');
 
@@ -226,6 +238,7 @@ export class OrdersService {
           total: totals.total,
           status: OrderStatus.AWAITING_PAYMENT,
           note: dto.note ?? null,
+          termsAcceptance: { version: CURRENT_TERMS_VERSION, acceptedAt: new Date() },
         });
 
         // Смета превращена в заказ и больше не редактируется. Следующий

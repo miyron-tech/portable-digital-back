@@ -168,6 +168,17 @@ export class OrderDiscount {
 }
 const OrderDiscountSchema = SchemaFactory.createForClass(OrderDiscount);
 
+/** Согласие с условиями при оформлении: какую редакцию принял клиент и когда. */
+@Schema({ _id: false })
+export class OrderTermsAcceptance {
+  @Prop({ required: true, trim: true })
+  version!: string;
+
+  @Prop({ required: true })
+  acceptedAt!: Date;
+}
+const OrderTermsAcceptanceSchema = SchemaFactory.createForClass(OrderTermsAcceptance);
+
 @Schema({
   timestamps: true,
   toJSON: {
@@ -182,8 +193,9 @@ const OrderDiscountSchema = SchemaFactory.createForClass(OrderDiscount);
 })
 export class Order {
   /**
-   * Человекочитаемый номер. Он же уходит в WemoPay как `referenceId`, поэтому
-   * обязан быть стабильным и уникальным: по нему платёж находят обратно.
+   * Человекочитаемый номер. Из него собирается `referenceId` для WemoPay
+   * (`PD-<номер>`), поэтому он обязан быть стабильным и уникальным: по нему
+   * платёж находят обратно.
    */
   @Prop({ required: true, unique: true, index: true })
   orderNumber!: string;
@@ -234,6 +246,14 @@ export class Order {
 
   @Prop({ type: String, trim: true, maxlength: 2000, default: null })
   note?: string | null;
+
+  /**
+   * Редакция условий и момент согласия. У новых заказов есть всегда (без
+   * согласия заказ не создаётся); `null` — только у заказов до этого правила,
+   * и такой заказ не оплатить.
+   */
+  @Prop({ type: OrderTermsAcceptanceSchema, default: null })
+  termsAcceptance?: OrderTermsAcceptance | null;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
