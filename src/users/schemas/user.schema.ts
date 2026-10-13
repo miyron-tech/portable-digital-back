@@ -40,6 +40,7 @@ export enum UserRole {
       delete ret.__v;
       delete ret.passwordHash;
       delete ret.refreshTokenHash;
+      delete ret.sessionVersion;
       return ret;
     },
   },
@@ -63,6 +64,10 @@ export class User {
   /** argon2 hash of the currently issued refresh token — enables real logout. */
   @Prop({ type: String, default: null, select: false })
   refreshTokenHash!: string | null;
+
+  /** Invalidates access tokens after sign-out or a password change. */
+  @Prop({ type: Number, default: 0, select: false })
+  sessionVersion!: number;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

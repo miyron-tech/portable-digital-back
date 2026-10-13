@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
@@ -8,6 +8,7 @@ import type { AuthTokens, JwtPayload } from './auth.types';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -58,7 +59,20 @@ export class AuthService {
   }
 
   async logout(userId: string) {
-    await this.users.setRefreshTokenHash(userId, null);
+    await this.users.revokeSessions(userId);
+    return { success: true };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.users.findById(userId, true);
+    if (!user || !await argon2.verify(user.passwordHash, dto.currentPassword)) {
+      throw new BadRequestException('The current password is incorrect.');
+    }
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('Choose a different password.');
+    }
+    const changed = await this.users.replacePassword(userId, user.passwordHash, await argon2.hash(dto.newPassword));
+    if (!changed) throw new ConflictException('Your account changed. Please sign in and try again.');
     return { success: true };
   }
 
@@ -89,6 +103,7 @@ export class AuthService {
       sub: user._id.toString(),
       email: user.email,
       role: user.role,
+      sessionVersion: user.sessionVersion ?? 0,
     });
     await this.users.setRefreshTokenHash(
       user._id.toString(),

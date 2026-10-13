@@ -13,12 +13,12 @@ export class UsersService {
 
   findByEmail(email: string, withSecrets = false) {
     const query = this.userModel.findOne({ email: email.toLowerCase().trim() });
-    return withSecrets ? query.select('+passwordHash +refreshTokenHash').exec() : query.exec();
+    return withSecrets ? query.select('+passwordHash +refreshTokenHash +sessionVersion').exec() : query.exec();
   }
 
   findById(id: string, withSecrets = false) {
     const query = this.userModel.findById(id);
-    return withSecrets ? query.select('+passwordHash +refreshTokenHash').exec() : query.exec();
+    return withSecrets ? query.select('+passwordHash +refreshTokenHash +sessionVersion').exec() : query.exec();
   }
 
   async findByIdOrFail(id: string) {
@@ -29,5 +29,18 @@ export class UsersService {
 
   async setRefreshTokenHash(id: string, hash: string | null) {
     await this.userModel.updateOne({ _id: id }, { $set: { refreshTokenHash: hash } }).exec();
+  }
+
+  async revokeSessions(id: string) {
+    await this.userModel.updateOne({ _id: id }, {
+      $set: { refreshTokenHash: null }, $inc: { sessionVersion: 1 },
+    }).exec();
+  }
+
+  async replacePassword(id: string, previousHash: string, passwordHash: string) {
+    const result = await this.userModel.updateOne({ _id: id, passwordHash: previousHash }, {
+      $set: { passwordHash, refreshTokenHash: null }, $inc: { sessionVersion: 1 },
+    }).exec();
+    return result.modifiedCount === 1;
   }
 }
