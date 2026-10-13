@@ -228,8 +228,9 @@ export class PaymentsService {
 
   async initiate(userId: string, orderNumber: string) {
     if (!this.wemopay.configured) {
+      this.logger.error('Payment initiation unavailable: WEMOPAY_API_KEY is not configured');
       throw new ServiceUnavailableException(
-        'Payments are not configured: set WEMOPAY_API_KEY',
+        'Payments are temporarily unavailable. Please try again later.',
       );
     }
 
@@ -269,7 +270,7 @@ export class PaymentsService {
         statusCode: 422,
         code: 'PAYER_DETAILS_REQUIRED',
         missing,
-        message: 'Add your name and billing address to pay — the payment provider requires them',
+        message: 'Add your full name and billing address to continue with payment.',
       });
     }
 
@@ -403,8 +404,8 @@ export class PaymentsService {
         // Клиенту — человеческий текст; поля провайдера видны в /admin/payments.
         throw new BadRequestException(
           error.status === 502
-            ? 'The payment provider is not responding. Please try again in a minute.'
-            : 'The payment provider declined to start this payment. Your manager has been notified — you can message them below.',
+            ? 'Payments are temporarily unavailable. Please try again later.'
+            : 'We could not start your payment. Please try again later or contact support.',
         );
       }
       throw error;

@@ -8,6 +8,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import type { JwtPayload, JwtRefreshPayload } from './auth.types';
 
@@ -63,5 +64,13 @@ export class AuthController {
   @ApiOperation({ summary: 'Update name and/or billing address' })
   updateProfile(@CurrentUser() user: JwtPayload, @Body() dto: UpdateProfileDto) {
     return this.auth.updateProfile(user.sub, dto);
+  }
+
+  @ApiBearerAuth()
+  @RateLimit(5, 60_000)
+  @Post('password')
+  @HttpCode(HttpStatus.OK)
+  changePassword(@CurrentUser('sub') userId: string, @Body() dto: ChangePasswordDto) {
+    return this.auth.changePassword(userId, dto);
   }
 }
