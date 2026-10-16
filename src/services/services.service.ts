@@ -17,6 +17,7 @@ export class ServicesService {
     const limit = query.limit ?? 12;
 
     const filter: QueryFilter<ServiceDocument> = includeDrafts ? {} : { published: true };
+    if (includeDrafts && query.visibility) filter.published = query.visibility === 'published';
     if (query.category) filter.category = query.category;
     if (query.tag) filter.tags = query.tag;
     if (query.search?.trim()) filter.$text = { $search: query.search.trim() };
