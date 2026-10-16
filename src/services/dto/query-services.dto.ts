@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ServiceCategory } from '../schemas/service.schema';
 
 export class QueryServicesDto {
@@ -9,6 +9,8 @@ export class QueryServicesDto {
 
   @IsOptional() @IsString() search?: string;
   @IsOptional() @IsString() tag?: string;
+
+  @IsOptional() @IsIn(['published', 'draft']) visibility?: 'published' | 'draft';
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit?: number = 12;

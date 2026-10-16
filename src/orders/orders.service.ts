@@ -275,9 +275,10 @@ export class OrdersService {
     const filter: QueryFilter<OrderDocument> = {};
     if (query.status) filter.status = query.status;
     if (query.search?.trim()) {
-      const term = query.search.trim();
+      const term = query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
         { orderNumber: { $regex: term, $options: 'i' } },
+        { 'customer.name': { $regex: term, $options: 'i' } },
         { 'customer.email': { $regex: term, $options: 'i' } },
       ];
     }
