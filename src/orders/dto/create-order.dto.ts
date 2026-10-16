@@ -29,8 +29,8 @@ export class CreateOrderDto {
   @Equals(true, { message: 'You must accept the Terms of Service and the Refund & Cancellation policy' })
   acceptTerms!: boolean;
 
-  /** Редакция условий, которую видел клиент; сверяется с действующей. */
-  @ApiProperty({ example: '12 October 2026' })
+  /** Редакция условий, которую клиент видел и явно принял. */
+  @ApiProperty({ example: '13 October 2026' })
   @IsString()
   @MaxLength(40)
   termsVersion!: string;
