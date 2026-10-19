@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { EstimateModule } from '../estimate/estimate.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Estimate, EstimateSchema } from '../estimate/schemas/estimate.schema';
 import { Payment, PaymentSchema } from '../payments/schemas/payment.schema';
@@ -13,6 +14,7 @@ import { Order, OrderSchema } from './schemas/order.schema';
 
 @Module({
   imports: [
+    EstimateModule,
     MongooseModule.forFeature([
       { name: Order.name, schema: OrderSchema },
       { name: OrderMessage.name, schema: OrderMessageSchema },

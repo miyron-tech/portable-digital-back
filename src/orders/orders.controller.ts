@@ -8,6 +8,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersService } from './orders.service';
+import { EditOrderDto } from './dto/edit-order.dto';
 
 @ApiTags('orders')
 @ApiBearerAuth()
@@ -51,5 +52,15 @@ export class OrdersController {
   @ApiOperation({ summary: 'Move an order through its lifecycle (admin)' })
   updateStatus(@Param('id') id: string, @Body() dto: UpdateOrderStatusDto) {
     return this.orders.updateStatus(id, dto.status);
+  }
+
+  @Post(':orderNumber/preview')
+  previewEdit(@Param('orderNumber') number: string, @CurrentUser('sub') userId: string, @Body() dto: EditOrderDto) {
+    return this.orders.previewEdit(number, userId, dto);
+  }
+
+  @Patch(':orderNumber')
+  edit(@Param('orderNumber') number: string, @CurrentUser('sub') userId: string, @Body() dto: EditOrderDto) {
+    return this.orders.edit(number, userId, dto);
   }
 }

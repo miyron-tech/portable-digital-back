@@ -9,7 +9,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-class BillingDto {
+export class BillingDto {
   @IsOptional() @IsString() @MaxLength(200) addressLine1?: string;
   @IsOptional() @IsString() @MaxLength(100) city?: string;
   @IsOptional() @IsString() @MaxLength(20) postalCode?: string;
