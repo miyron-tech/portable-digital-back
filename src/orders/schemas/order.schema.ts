@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { BillingPeriod, PricingModel } from '../../services/schemas/service.schema';
 import { DiscountType } from '../../estimate/schemas/estimate.schema';
 
@@ -70,9 +70,9 @@ export class OrderItemPricing {
 const OrderItemPricingSchema = SchemaFactory.createForClass(OrderItemPricing);
 
 /**
- * Позиция заказа — снимок позиции сметы вместе с её суммой. Пересчитывать её
- * потом нельзя: заказ должен показывать то, за что человек заплатил, даже если
- * тариф в каталоге с тех пор трижды поменялся.
+ * Позиция заказа — снимок с согласованной суммой. До оплаты редактор может
+ * заменить снимок после явного подтверждения расчёта. После оплаты он неизменен,
+ * даже если тариф в каталоге поменялся.
  */
 @Schema({ _id: false })
 export class OrderItem {
@@ -192,6 +192,17 @@ const OrderTermsAcceptanceSchema = SchemaFactory.createForClass(OrderTermsAccept
   },
 })
 export class Order {
+  @Prop({ default: 0 })
+  revision!: number;
+
+  // Serializes edits and payment creation across API processes. No lease expiry:
+  // an interrupted provider call must be reconciled before another operation.
+  @Prop({ type: String, default: null, select: false })
+  mutationLock?: string | null;
+
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+  changes!: { at: Date; actorId: string; previousTotal: number; total: number; revision: number; before: unknown; after: unknown }[];
+
   /**
    * Человекочитаемый номер. Из него собирается `referenceId` для WemoPay
    * (`PD-<номер>`), поэтому он обязан быть стабильным и уникальным: по нему

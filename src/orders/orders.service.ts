@@ -5,7 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { randomInt } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
+import { EstimateService } from '../estimate/estimate.service';
+import { EditOrderDto } from './dto/edit-order.dto';
 import { Model, QueryFilter, Types } from 'mongoose';
 import {
   computeEstimatePricing,
@@ -35,6 +37,7 @@ const PAGE_SIZE = 20;
 @Injectable()
 export class OrdersService {
   constructor(
+    private readonly estimates: EstimateService,
     @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
     @InjectModel(Estimate.name) private readonly estimateModel: Model<EstimateDocument>,
     @InjectModel(Service.name) private readonly serviceModel: Model<ServiceDocument>,
@@ -86,6 +89,8 @@ export class OrdersService {
       const payment = paymentByOrder.get(id);
       return {
         ...order.toJSON(),
+        id,
+        canEdit: order.status === OrderStatus.AWAITING_PAYMENT && (!payment || !payment.needsReview && [PaymentStatus.DECLINED, PaymentStatus.CANCELLED].includes(payment.status)),
         payment: payment
           ? {
               status: payment.status as PaymentStatus,
@@ -114,8 +119,8 @@ export class OrdersService {
   /**
    * Заказ из активной сметы.
    *
-   * Смета изменяемая, заказ — нет: сюда переносится снимок позиций вместе с
-   * посчитанными суммами. Дальше заказ живёт независимо от каталога.
+   * Сюда переносится снимок позиций и сумм. Каталог не меняет его автоматически:
+   * до оплаты клиент может явно принять новый расчёт через редактор заказа.
    */
   async createFromEstimate(userId: string, dto: CreateOrderDto) {
     const user = await this.userModel.findById(userId).exec();
@@ -251,6 +256,64 @@ export class OrdersService {
     return this.decorate(orders, UserRole.USER);
   }
 
+  async withMutationLock<T>(orderId: string, action: () => Promise<T>): Promise<T> {
+    const token = randomUUID();
+    const locked = await this.orderModel.findOneAndUpdate(
+      { _id: orderId, mutationLock: null }, { $set: { mutationLock: token } }, { timestamps: false },
+    ).exec();
+    if (!locked) throw new ConflictException('An order update or payment is already being processed. Please refresh and try again.');
+    try { return await action(); }
+    finally { await this.orderModel.updateOne({ _id: orderId, mutationLock: token }, { $unset: { mutationLock: 1 } }, { timestamps: false }).exec(); }
+  }
+
+  private async editableOrder(number: string, userId: string, revision: number) {
+    const order = await this.orderModel.findOne({ orderNumber: number, userId: new Types.ObjectId(userId) }).exec();
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== OrderStatus.AWAITING_PAYMENT) throw new ConflictException('Only orders awaiting payment can be edited. Refresh the order to see its current status.');
+    if ((order.revision ?? 0) !== revision) throw new ConflictException('This order has changed. Close the editor and reopen it to load the latest version.');
+    const payment = await this.paymentModel.findOne({ orderId: order._id }).exec();
+    if (payment && (payment.needsReview || ![PaymentStatus.DECLINED, PaymentStatus.CANCELLED].includes(payment.status))) {
+      throw new ConflictException('A payment is active or requires review. Complete or cancel it on the payment page, then check the payment status before editing.');
+    }
+    return order;
+  }
+
+  private async quoteEdit(order: OrderDocument, dto: EditOrderDto) {
+    const priced = await this.estimates.price(dto);
+    if (priced.currency !== order.currency) throw new BadRequestException('Services must use the order currency.');
+    const totals = computeEstimatePricing(priced.items.map(item => item.pricing), order.discount);
+    if (!Number.isSafeInteger(totals.total) || totals.total <= 0) throw new BadRequestException('Order total must be greater than zero and within the supported range.');
+    const items = priced.items.map(({ serviceId, slug, title, model, unitAmount, baseAmount, includedHours, overageAmount, period, units, extraHours, milestones, pricing, notes }) =>
+      ({ serviceId, slug, title, model, unitAmount, baseAmount, includedHours, overageAmount, period, units, extraHours, milestones, pricing, notes }));
+    const quoteToken = createHash('sha256').update(JSON.stringify({ orderId: order.id, revision: order.revision ?? 0, items, totals, currency: priced.currency })).digest('hex');
+    return { items, ...totals, currency: priced.currency, quoteToken };
+  }
+
+  async previewEdit(number: string, userId: string, dto: EditOrderDto) {
+    const order = await this.editableOrder(number, userId, dto.revision);
+    return this.quoteEdit(order, dto);
+  }
+
+  async edit(number: string, userId: string, dto: EditOrderDto) {
+    const initial = await this.editableOrder(number, userId, dto.revision);
+    return this.withMutationLock(initial.id, async () => {
+      const order = await this.editableOrder(number, userId, dto.revision);
+      const quote = await this.quoteEdit(order, dto);
+      if (!dto.quoteToken || quote.quoteToken !== dto.quoteToken) throw new ConflictException('Prices or services changed. Review the updated total before saving.');
+      const { quoteToken: _token, discountType: _type, discountValue: _value, ...priced } = quote;
+      const fields = { ...priced, note: dto.note ?? order.note, billing: dto.billing ?? order.billing,
+        customer: { name: order.customer.name, email: order.customer.email, phone: dto.phone ?? order.customer.phone, company: dto.company ?? order.customer.company } };
+      const updated = await this.orderModel.findOneAndUpdate(
+        { _id: order._id, status: OrderStatus.AWAITING_PAYMENT, $or: [{ revision: dto.revision }, ...(dto.revision === 0 ? [{ revision: { $exists: false } }] : [])] },
+        { $set: fields, $inc: { revision: 1 }, $push: { changes: { at: new Date(), actorId: userId, revision: dto.revision + 1, previousTotal: order.total, total: quote.total,
+          before: { items: order.items, note: order.note, billing: order.billing, customer: order.customer, total: order.total }, after: fields } } },
+        { new: true, runValidators: true },
+      ).exec();
+      if (!updated) throw new ConflictException('The order changed or was paid while you were editing. Refresh it before continuing.');
+      return this.findByNumber(number, userId, false);
+    });
+  }
+
   /** Заказ по номеру. Не-админ видит только свой. */
   async findByNumber(orderNumber: string, userId: string, isAdmin: boolean) {
     const order = await this.orderModel.findOne({ orderNumber }).exec();
@@ -310,9 +373,9 @@ export class OrdersService {
         `Cannot move an order from "${order.status}" to "${status}"`,
       );
     }
-    order.status = status;
-    await order.save();
-    return order.toJSON();
+    const updated = await this.orderModel.findOneAndUpdate({ _id: order._id, status: order.status, mutationLock: null }, { $set: { status } }, { new: true }).exec();
+    if (!updated) throw new ConflictException('The order changed. Refresh and try again.');
+    return updated.toJSON();
   }
 
   /**

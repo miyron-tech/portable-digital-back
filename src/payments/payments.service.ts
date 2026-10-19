@@ -227,6 +227,11 @@ export class PaymentsService {
   // ─── создание платежа ──────────────────────────────────────────────────────
 
   async initiate(userId: string, orderNumber: string) {
+    const order = await this.orders.findByNumber(orderNumber, userId, false);
+    return this.orders.withMutationLock(order.id, () => this.initiateLocked(userId, orderNumber));
+  }
+
+  private async initiateLocked(userId: string, orderNumber: string) {
     if (!this.wemopay.configured) {
       this.logger.error('Payment initiation unavailable: WEMOPAY_API_KEY is not configured');
       throw new ServiceUnavailableException(
@@ -236,6 +241,7 @@ export class PaymentsService {
 
     const order = (await this.orders.findByNumber(orderNumber, userId, false)) as any;
     const orderDoc = await this.orders.findById(order.id);
+    if (orderDoc.status !== 'awaiting_payment') throw new ConflictException('This order is no longer awaiting payment.');
 
     // Платить можно только за заказ с зафиксированным согласием на условия.
     // У заказов, оформленных до этого правила, его нет — их оформляют заново.
@@ -306,7 +312,10 @@ export class PaymentsService {
     // навсегда оставался «не оплачен». Теперь начинается новая попытка со
     // своим номером у провайдера; прежняя остаётся в истории событий.
     if (payment.status === PaymentStatus.DECLINED || payment.status === PaymentStatus.CANCELLED) {
+      if (payment.needsReview) throw new ConflictException('This payment requires review. Please contact the team before trying again.');
       this.startNewAttempt(payment);
+      payment.amount = orderDoc.total;
+      payment.currency = orderDoc.currency;
       await payment.save();
     }
 
